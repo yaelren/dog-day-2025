@@ -12,21 +12,21 @@ class Config {
         this.strips = [
             {
                 id: 1,
-                text: 'WHO',
+                pattern: ['large','W', 'large', 'H', 'large', 'O', 'large', 'W', 'large', 'H', 'large', 'O'], // W-H-O with large images
                 direction: 'left',
                 speed: 2,
                 y: 0
             },
             {
                 id: 2,
-                text: 'OOOOOOOO',
+                pattern: ['O', 'cropped', 'large', 'O', 'large', 'O', 'cropped', 'O', 'cropped', 'large', 'O', 'large', 'O', 'cropped'], // Second row pattern
                 direction: 'right',
                 speed: 2.5,
                 y: 551
             },
             {
                 id: 3,
-                text: 'OF!',
+                pattern: ['large', 'O', 'cropped', 'large', 'F', 'large', '!', 'large', 'O', 'cropped', 'large', 'F', 'large', '!'], // Last row pattern
                 direction: 'left',
                 speed: 1.8,
                 y: 1102
@@ -45,9 +45,13 @@ class Config {
             maxCount: 10,
             queue: [],
             loaded: new Map(),
-            elementSize: {
-                width: 400, // Exact image width in pixels
-                height: 400 // Exact image height in pixels
+            largeSize: {
+                width: 727,
+                height: 484
+            },
+            croppedSize: {
+                width: 365.79,
+                height: 484
             },
             spacing: 40 // Exact spacing between images in pixels
         };
@@ -73,7 +77,7 @@ class Config {
             elementCount: 0
         };
         
-        this.wsUrl = `ws://localhost:3000`;
+        // WebSocket removed - using HTTP polling instead
     }
     
     updateStrip(id, property, value) {

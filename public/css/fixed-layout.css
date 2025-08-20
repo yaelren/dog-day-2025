@@ -75,7 +75,7 @@ html, body {
 
 .header-text {
     color: var(--color-yellow);
-    font-size: 28.262948989868164px; /* Match logo height for consistency */
+    font-size: 40px; /* Set to 40px as requested */
     font-weight: 700;
     font-family: 'WixMadeforDisplay', sans-serif;
     position: absolute;
@@ -98,7 +98,7 @@ html, body {
     height: 50px;
     top: 41px;
     left: 4469px;
-    font-size: 50px;
+    font-size: 40px; /* Set to 40px as requested */
     line-height: 50px;
     text-align: center;
     opacity: 1;

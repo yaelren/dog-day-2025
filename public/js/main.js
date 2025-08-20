@@ -23,11 +23,14 @@ class App {
             // Initialize image manager
             this.imageManager = new window.ImageManager(this.config);
             
-            // Wait a moment for WebSocket connection
-            await this.waitForConnection();
+            // Wait a moment for initial image loading
+            await this.waitForImages();
             
             // Initialize strip renderer
             this.stripRenderer = new window.StripRenderer(this.config, this.imageManager);
+            
+            // Make stripRenderer globally accessible for image updates
+            window.stripRenderer = this.stripRenderer;
             
             // Initialize zoom manager
             this.zoomManager = new window.ZoomManager(this.config, this.stripRenderer);
@@ -52,8 +55,8 @@ class App {
         }
     }
     
-    async waitForConnection() {
-        // Give WebSocket a moment to connect
+    async waitForImages() {
+        // Give image manager a moment to load initial images
         return new Promise(resolve => {
             setTimeout(() => {
                 resolve();
@@ -82,6 +85,12 @@ class App {
         
         this.isRunning = true;
         console.log('Starting animation loop...');
+        
+        // Ensure we have a clean start
+        if (this.animationId) {
+            cancelAnimationFrame(this.animationId);
+            this.animationId = null;
+        }
         
         this.animate();
     }
@@ -239,18 +248,7 @@ document.addEventListener('DOMContentLoaded', () => {
     console.log('  Ctrl/Cmd+Z: Force zoom');
 });
 
-// Handle page visibility changes to pause/resume animation
-document.addEventListener('visibilitychange', () => {
-    if (window.app) {
-        if (document.hidden) {
-            console.log('Page hidden, pausing animation');
-            window.app.stop();
-        } else {
-            console.log('Page visible, resuming animation');
-            window.app.start();
-        }
-    }
-});
+// Visibility change handler removed - animation stays running always
 
 // Handle window resize (though this shouldn't happen with fixed dimensions)
 window.addEventListener('resize', () => {

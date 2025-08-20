@@ -7,8 +7,8 @@
     "start": "node server/index.js",
     "dev": "nodemon server/index.js",
     "dev:server": "nodemon server/index.js",
-    "dev:client": "live-server public --port=8080 --host=localhost",
-    "dev:all": "npm run dev:server & npm run dev:client",
+    "dev:client": "echo 'Client served by Express server on port 3000 - no separate dev server needed'",
+    "dev:all": "nodemon server/index.js",
     "build-css": "tailwindcss -i ./public/css/input.css -o ./public/css/output.css --watch"
   },
   "dependencies": {

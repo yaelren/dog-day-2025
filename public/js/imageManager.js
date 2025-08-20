@@ -2,64 +2,61 @@
 class ImageManager {
     constructor(config) {
         this.config = config;
-        this.ws = null;
-        this.reconnectInterval = 5000;
-        this.maxReconnectAttempts = 5;
-        this.reconnectAttempts = 0;
+        this.pollingInterval = 3000; // Poll every 3 seconds
+        this.lastImageCount = 0;
         
-        this.initWebSocket();
+        this.startPolling();
     }
     
-    initWebSocket() {
+    startPolling() {
+        // Load initial images and config
+        this.fetchImages();
+        this.updateUI();
+        
+        // Set up polling interval
+        setInterval(() => {
+            this.fetchImages();
+        }, this.pollingInterval);
+    }
+    
+    async fetchImages() {
         try {
-            this.ws = new WebSocket(this.config.wsUrl);
+            const response = await fetch('/api/images');
+            const data = await response.json();
             
-            this.ws.onopen = () => {
-                console.log('WebSocket connected');
-                this.reconnectAttempts = 0;
-            };
-            
-            this.ws.onmessage = (event) => {
-                this.handleMessage(JSON.parse(event.data));
-            };
-            
-            this.ws.onclose = () => {
-                console.log('WebSocket disconnected');
-                this.attemptReconnect();
-            };
-            
-            this.ws.onerror = (error) => {
-                console.error('WebSocket error:', error);
-            };
-        } catch (error) {
-            console.error('Failed to create WebSocket:', error);
-            this.attemptReconnect();
-        }
-    }
-    
-    attemptReconnect() {
-        if (this.reconnectAttempts < this.maxReconnectAttempts) {
-            this.reconnectAttempts++;
-            console.log(`Attempting to reconnect... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
-            setTimeout(() => this.initWebSocket(), this.reconnectInterval);
-        }
-    }
-    
-    handleMessage(data) {
-        switch(data.type) {
-            case 'initialImages':
-                this.loadInitialImages(data.images);
-                this.updateUI(data.config);
-                break;
+            if (data.images.length !== this.lastImageCount) {
+                if (this.lastImageCount === 0) {
+                    // Initial load
+                    await this.loadInitialImages(data.images);
+                } else if (data.images.length > this.lastImageCount) {
+                    // New images added
+                    const newImages = data.images.slice(this.lastImageCount);
+                    for (const imageInfo of newImages) {
+                        await this.handleNewImage(imageInfo);
+                    }
+                } else if (data.images.length < this.lastImageCount) {
+                    // Images were cleared
+                    this.clearImages();
+                    await this.loadInitialImages(data.images);
+                }
                 
-            case 'newImage':
-                this.addNewImage(data.image);
+                this.lastImageCount = data.images.length;
                 this.updateImageCount();
-                break;
-                
-            case 'queueCleared':
-                this.clearImages();
-                break;
+            }
+        } catch (error) {
+            console.error('Failed to fetch images:', error);
+        }
+    }
+    
+    async handleNewImage(imageInfo) {
+        console.log(`New image detected: ${imageInfo.filename}`);
+        
+        // Load the new image
+        const processedImageInfo = await this.loadImage(imageInfo);
+        
+        // Notify strip renderer to replace an off-screen image
+        if (window.stripRenderer) {
+            window.stripRenderer.handleNewImage(processedImageInfo);
         }
     }
     
@@ -73,17 +70,7 @@ class ImageManager {
         this.updateImageCount();
     }
     
-    async addNewImage(imageInfo) {
-        console.log(`Adding new image: ${imageInfo.filename}`);
-        
-        // Remove oldest if at capacity
-        if (this.config.images.queue.length >= this.config.images.maxCount) {
-            const oldest = this.config.images.queue.shift();
-            this.config.images.loaded.delete(oldest.filename);
-        }
-        
-        await this.loadImage(imageInfo);
-    }
+    // Method removed - replaced by handleNewImage
     
     async loadImage(imageInfo) {
         return new Promise((resolve, reject) => {
@@ -91,45 +78,15 @@ class ImageManager {
             img.crossOrigin = 'anonymous';
             
             img.onload = () => {
-                // Create canvas for consistent sizing
-                const canvas = document.createElement('canvas');
-                const ctx = canvas.getContext('2d');
+                // Create both large and cropped versions
+                const largeCanvas = this.createImageCanvas(img, this.config.images.largeSize);
+                const croppedCanvas = this.createImageCanvas(img, this.config.images.croppedSize);
                 
-                const { width, height } = this.config.images.elementSize;
-                canvas.width = width;
-                canvas.height = height;
-                
-                // Calculate aspect ratio and center the image
-                const imgAspect = img.width / img.height;
-                const canvasAspect = width / height;
-                
-                let drawWidth, drawHeight, drawX, drawY;
-                
-                if (imgAspect > canvasAspect) {
-                    // Image is wider than canvas
-                    drawHeight = height;
-                    drawWidth = height * imgAspect;
-                    drawX = (width - drawWidth) / 2;
-                    drawY = 0;
-                } else {
-                    // Image is taller than canvas
-                    drawWidth = width;
-                    drawHeight = width / imgAspect;
-                    drawX = 0;
-                    drawY = (height - drawHeight) / 2;
-                }
-                
-                // Fill background with dark color
-                ctx.fillStyle = '#1a1a1a';
-                ctx.fillRect(0, 0, width, height);
-                
-                // Draw image
-                ctx.drawImage(img, drawX, drawY, drawWidth, drawHeight);
-                
-                // Store processed image data
+                // Store processed image data with both versions
                 const processedImageInfo = {
                     ...imageInfo,
-                    canvas: canvas,
+                    largeCanvas: largeCanvas,
+                    croppedCanvas: croppedCanvas,
                     processedAt: Date.now()
                 };
                 
@@ -144,9 +101,42 @@ class ImageManager {
                 reject(new Error(`Failed to load image: ${imageInfo.filename}`));
             };
             
-            // Use absolute URL to backend server for images
-            img.src = `http://localhost:3000/images/${encodeURIComponent(imageInfo.filename)}`;
+            // Use relative URL to current server for images
+            img.src = `/images/${encodeURIComponent(imageInfo.filename)}`;
         });
+    }
+    
+    createImageCanvas(img, targetSize) {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        canvas.width = targetSize.width;
+        canvas.height = targetSize.height;
+        
+        // Calculate scaling to crop and fit
+        const imgAspect = img.width / img.height;
+        const canvasAspect = targetSize.width / targetSize.height;
+        
+        let sourceWidth, sourceHeight, sourceX, sourceY;
+        
+        if (imgAspect > canvasAspect) {
+            // Image is wider - crop horizontally
+            sourceHeight = img.height;
+            sourceWidth = img.height * canvasAspect;
+            sourceX = (img.width - sourceWidth) / 2;
+            sourceY = 0;
+        } else {
+            // Image is taller - crop vertically
+            sourceWidth = img.width;
+            sourceHeight = img.width / canvasAspect;
+            sourceX = 0;
+            sourceY = (img.height - sourceHeight) / 2;
+        }
+        
+        // Draw cropped and scaled image to fill entire canvas
+        ctx.drawImage(img, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, targetSize.width, targetSize.height);
+        
+        return canvas;
     }
     
     clearImages() {
@@ -156,14 +146,35 @@ class ImageManager {
     }
     
     refreshImages() {
-        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-            this.ws.send(JSON.stringify({ type: 'getImages' }));
-        }
+        // Force a fetch
+        this.fetchImages();
     }
     
-    getRandomImage() {
+    getRandomImage(size = 'large') {
         if (this.config.images.queue.length === 0) return null;
-        return this.config.images.queue[Math.floor(Math.random() * this.config.images.queue.length)];
+        const imageInfo = this.config.images.queue[Math.floor(Math.random() * this.config.images.queue.length)];
+        return {
+            ...imageInfo,
+            canvas: size === 'large' ? imageInfo.largeCanvas : imageInfo.croppedCanvas,
+            size: size
+        };
+    }
+    
+    getUniqueImage(size = 'large', usedImages = new Set()) {
+        if (this.config.images.queue.length === 0) return null;
+        
+        // Filter out already used images
+        const availableImages = this.config.images.queue.filter(img => !usedImages.has(img.filename));
+        
+        // If all images are used, fall back to any image
+        const imagePool = availableImages.length > 0 ? availableImages : this.config.images.queue;
+        const imageInfo = imagePool[Math.floor(Math.random() * imagePool.length)];
+        
+        return {
+            ...imageInfo,
+            canvas: size === 'large' ? imageInfo.largeCanvas : imageInfo.croppedCanvas,
+            size: size
+        };
     }
     
     updateImageCount() {
@@ -173,8 +184,11 @@ class ImageManager {
         }
     }
     
-    updateUI(serverConfig) {
-        if (serverConfig) {
+    async updateUI() {
+        try {
+            const response = await fetch('/api/config');
+            const serverConfig = await response.json();
+            
             // Update watch folder display
             const folderElement = document.getElementById('watchFolder');
             if (folderElement) {
@@ -186,6 +200,8 @@ class ImageManager {
             if (maxElement) {
                 maxElement.textContent = serverConfig.maxImages;
             }
+        } catch (error) {
+            console.error('Failed to fetch config:', error);
         }
     }
 }

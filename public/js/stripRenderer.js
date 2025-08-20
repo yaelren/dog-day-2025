@@ -62,16 +62,20 @@ class StripRenderer {
     
     updateElementSizes() {
         // Scale element sizes based on display scale
-        const baseImageSize = 400;
         const baseFontSize = 280;
         
-        // Update config with scaled sizes
-        this.config.images.elementSize.width = baseImageSize * this.displayScale;
-        this.config.images.elementSize.height = baseImageSize * this.displayScale;
+        // Update config with scaled font size
         this.config.text.fontSize = baseFontSize * this.displayScale;
         
+        // Scale image sizes
+        this.config.images.largeSize.width *= this.displayScale;
+        this.config.images.largeSize.height *= this.displayScale;
+        this.config.images.croppedSize.width *= this.displayScale;
+        this.config.images.croppedSize.height *= this.displayScale;
+        
         console.log(`Scaled font size: ${this.config.text.fontSize.toFixed(0)}px`);
-        console.log(`Scaled image size: ${this.config.images.elementSize.width.toFixed(0)}x${this.config.images.elementSize.height.toFixed(0)}px`);
+        console.log(`Scaled large image size: ${this.config.images.largeSize.width.toFixed(0)}x${this.config.images.largeSize.height.toFixed(0)}px`);
+        console.log(`Scaled cropped image size: ${this.config.images.croppedSize.width.toFixed(0)}x${this.config.images.croppedSize.height.toFixed(0)}px`);
     }
     
     initStrips() {
@@ -130,6 +134,16 @@ class StripRenderer {
         }
         return null;
     }
+    
+    handleNewImage(newImageInfo) {
+        // Try to replace an off-screen image in one of the strips
+        for (const strip of this.strips) {
+            if (strip.replaceOffscreenImageWithNew(newImageInfo)) {
+                return true; // Successfully replaced
+            }
+        }
+        return false; // No off-screen slots available
+    }
 }
 
 // Individual strip class
@@ -144,61 +158,62 @@ class Strip {
         this.elementSpacing = this.config.images.spacing || 40; // Use exact spacing from config
         this.totalWidth = 0;
         
-        // Image refresh timing
-        this.lastImageSwap = 0;
-        this.imageSwapInterval = 2000; // Swap images every 2 seconds
-        this.imagesPerSwap = 3; // Number of images to swap at once
+        // Track used images to prevent duplicates
+        this.usedImages = new Set();
         
         this.initElements();
     }
     
     initElements() {
-        // Pre-build the entire strip with all letters and images
-        const text = this.stripConfig.text;
+        // Build strip based on pattern array
+        const pattern = this.stripConfig.pattern;
         let currentX = 0;
         
-        console.log(`Initializing strip ${this.stripConfig.id} with text: "${text}"`);
+        console.log(`Initializing strip ${this.stripConfig.id} with pattern:`, pattern);
         console.log(`Available images: ${this.imageManager.config.images.queue.length}`);
         
         let letterIndex = 0; // Track letter index for alternating colors
         
-        // First pass: create the full pattern of letters and images
-        for (let i = 0; i < text.length; i++) {
-            const letter = text[i];
+        // Create elements based on pattern
+        for (let i = 0; i < pattern.length; i++) {
+            const item = pattern[i];
             
-            // Add letter element
-            if (letter !== ' ') {
-                this.elements.push({
-                    type: 'letter',
-                    content: letter.toUpperCase(), // Store as uppercase
-                    x: currentX,
-                    width: this.calculateLetterWidth(letter),
-                    height: this.config.display.stripHeight,
-                    color: this.config.getAlternatingColor(letterIndex++)
-                });
-                
-                currentX += this.calculateLetterWidth(letter) + this.elementSpacing;
-            }
-            
-            // Add image element after each letter (except the last one)
-            if (i < text.length - 1) {
+            if (item === 'large' || item === 'cropped') {
+                // Add image element
+                const size = item === 'large' ? this.config.images.largeSize : this.config.images.croppedSize;
                 const imageElement = {
                     type: 'image',
+                    imageType: item,
                     x: currentX,
-                    width: this.config.images.elementSize.width,
-                    height: this.config.images.elementSize.height,
+                    width: size.width,
+                    height: size.height,
                     imageInfo: null // Will be populated below
                 };
                 
-                // Pre-load an image for this slot
+                // Pre-load a unique image for this slot
                 if (this.imageManager.config.images.queue.length > 0) {
-                    imageElement.imageInfo = this.imageManager.getRandomImage();
+                    imageElement.imageInfo = this.imageManager.getUniqueImage(item, this.usedImages);
+                    if (imageElement.imageInfo?.filename) {
+                        this.usedImages.add(imageElement.imageInfo.filename);
+                    }
                 }
                 
                 this.elements.push(imageElement);
                 this.imageElements.push(imageElement); // Keep reference for swapping
                 
-                currentX += this.config.images.elementSize.width + this.elementSpacing;
+                currentX += size.width + this.elementSpacing;
+            } else {
+                // Add letter element
+                this.elements.push({
+                    type: 'letter',
+                    content: item.toUpperCase(),
+                    x: currentX,
+                    width: this.calculateLetterWidth(item),
+                    height: this.config.display.stripHeight,
+                    color: this.config.getAlternatingColor(letterIndex++)
+                });
+                
+                currentX += this.calculateLetterWidth(item) + this.elementSpacing;
             }
         }
         
@@ -272,39 +287,36 @@ class Strip {
             }
         }
         
-        // Periodically swap images (instead of random refreshing)
-        if (currentTime - this.lastImageSwap > this.imageSwapInterval) {
-            this.swapRandomImages();
-            this.lastImageSwap = currentTime;
-        }
+        // Images are now static - no periodic swapping
     }
     
-    swapRandomImages() {
-        // Only swap if we have images available
-        if (this.imageManager.config.images.queue.length === 0 || this.imageElements.length === 0) {
-            return;
-        }
+    replaceOffscreenImageWithNew(newImageInfo) {
+        // Find off-screen image elements that can be replaced
+        const offscreenElements = this.imageElements.filter(element => {
+            // Element is off-screen if it's completely outside the visible area
+            return element.x + element.width < -100 || element.x > this.config.display.width + 100;
+        });
         
-        // Select random image elements to swap
-        const elementsToSwap = Math.min(this.imagesPerSwap, this.imageElements.length);
-        const swappedIndices = new Set();
-        
-        for (let i = 0; i < elementsToSwap; i++) {
-            let randomIndex;
+        if (offscreenElements.length > 0) {
+            // Pick a random off-screen element to replace
+            const elementToReplace = offscreenElements[Math.floor(Math.random() * offscreenElements.length)];
             
-            // Pick a random index that hasn't been swapped yet
-            do {
-                randomIndex = Math.floor(Math.random() * this.imageElements.length);
-            } while (swappedIndices.has(randomIndex) && swappedIndices.size < this.imageElements.length);
-            
-            swappedIndices.add(randomIndex);
-            
-            // Get a new random image for this slot
-            const newImageInfo = this.imageManager.getRandomImage();
-            if (newImageInfo) {
-                this.imageElements[randomIndex].imageInfo = newImageInfo;
+            // Remove old image from used set if it exists
+            if (elementToReplace.imageInfo?.filename) {
+                this.usedImages.delete(elementToReplace.imageInfo.filename);
             }
+            
+            // Assign new image and mark as used
+            elementToReplace.imageInfo = newImageInfo;
+            if (newImageInfo?.filename) {
+                this.usedImages.add(newImageInfo.filename);
+            }
+            
+            console.log(`Replaced off-screen image with ${newImageInfo?.filename}`);
+            return true;
         }
+        
+        return false; // No off-screen elements found
     }
     
     render(ctx) {
