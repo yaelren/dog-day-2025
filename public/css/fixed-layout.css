@@ -1,0 +1,223 @@
+/* Fixed Layout CSS - Exact dimensions with proportional scaling */
+
+/* Global Color Variables */
+:root {
+    --color-yellow: rgba(253, 255, 203, 1);
+    --color-pink: rgba(220, 192, 255, 1);
+    --color-brown: rgba(123, 66, 53, 1);
+}
+
+/* Wix Font */
+@font-face {
+    font-family: 'WixMadeforDisplay';
+    src: url('../assets/fonts/WixMadeforDisplayApp-Bold_1932211636.ttf') format('truetype');
+    font-weight: 700;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: 'WixMadeforDisplay';
+    src: url('../assets/fonts/WixMadeforDisplayApp-ExtraBold_1934865085.ttf') format('truetype');
+    font-weight: 800;
+    font-style: normal;
+}
+
+/* Reset */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+/* Container wrapper for scaling */
+html, body {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background: #000;
+}
+
+/* Main fixed-size layout container */
+.fixed-layout {
+    width: 4640px;
+    height: 1760px;
+    background: var(--color-brown);
+    position: relative;
+    transform-origin: top left;
+    font-family: 'WixMadeforDisplay', sans-serif;
+}
+
+/* Header Bar - Fixed size */
+.header-bar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 4640px;
+    height: 106px; /* Adjusted to accommodate logo positioning */
+    background: var(--color-brown);
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    justify-content: center; /* Center the middle text */
+}
+
+.header-left {
+    position: absolute;
+    top: 53px;
+    left: 90px;
+}
+
+.logo {
+    width: 73px;
+    height: 28.262948989868164px;
+    opacity: 1;
+}
+
+.header-text {
+    color: var(--color-yellow);
+    font-size: 28.262948989868164px; /* Match logo height for consistency */
+    font-weight: 700;
+    font-family: 'WixMadeforDisplay', sans-serif;
+    position: absolute;
+}
+
+.header-text.center {
+    /* Center text */
+    left: 50%;
+    transform: translateX(-50%);
+    color: var(--color-yellow);
+    font-weight: 800; /* Extra Bold */
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+
+.header-text.right {
+    /* Right text - 2025 */
+    position: absolute;
+    width: 100px;
+    height: 50px;
+    top: 41px;
+    left: 4469px;
+    font-size: 50px;
+    line-height: 50px;
+    text-align: center;
+    opacity: 1;
+    color: var(--color-yellow);
+}
+
+/* Canvas elements - Fixed size */
+.main-canvas {
+    position: absolute;
+    top: 106px;
+    left: 0;
+    width: 4640px;
+    height: 1654px; /* 1760px - 106px header */
+    z-index: 10;
+}
+
+.zoom-canvas {
+    position: absolute;
+    top: 106px;
+    left: 0;
+    width: 4640px;
+    height: 1654px; /* 1760px - 106px header */
+    z-index: 20;
+    pointer-events: none;
+}
+
+/* Development Panel - Fixed position and size */
+.dev-panel {
+    position: absolute;
+    top: 126px;
+    right: 25px;
+    width: 400px;
+    background: rgba(17, 24, 39, 0.95);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(31, 41, 55, 1);
+    border-radius: 16px;
+    color: white;
+    z-index: 40;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    transition: transform 0.3s ease;
+}
+
+.dev-panel.hidden {
+    transform: translateX(450px);
+}
+
+/* Show Panel Button - Fixed position */
+.show-panel-btn {
+    position: absolute;
+    top: 126px;
+    right: 25px;
+    padding: 12px 24px;
+    background: rgba(17, 24, 39, 0.95);
+    border: 1px solid rgba(31, 41, 55, 1);
+    border-radius: 10px;
+    color: white;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    z-index: 30;
+    display: none;
+    transition: background-color 0.2s;
+}
+
+.show-panel-btn:hover {
+    background: rgba(31, 41, 55, 0.95);
+}
+
+.dev-panel.hidden ~ .show-panel-btn {
+    display: block;
+}
+
+/* Development panel internal styles remain consistent */
+.dev-panel .flex {
+    display: flex;
+}
+
+.dev-panel .justify-between {
+    justify-content: space-between;
+}
+
+.dev-panel .items-center {
+    align-items: center;
+}
+
+.dev-panel .px-5 {
+    padding-left: 20px;
+    padding-right: 20px;
+}
+
+.dev-panel .py-4 {
+    padding-top: 16px;
+    padding-bottom: 16px;
+}
+
+.dev-panel .border-b {
+    border-bottom: 1px solid rgba(31, 41, 55, 1);
+}
+
+.dev-panel h3 {
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.dev-panel button {
+    padding: 6px 12px;
+    font-size: 12px;
+    font-weight: 500;
+    background: rgba(31, 41, 55, 1);
+    border: none;
+    border-radius: 6px;
+    color: white;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.dev-panel button:hover {
+    background: rgba(55, 65, 81, 1);
+}
+
+/* Scaling script will be added via JavaScript */
+/* The entire .fixed-layout container will be scaled using transform: scale() */
