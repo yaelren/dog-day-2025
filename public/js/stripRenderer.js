@@ -140,14 +140,20 @@ class Strip {
         this.imageManager = imageManager;
         
         this.elements = [];
+        this.imageElements = []; // Keep track of image elements for swapping
         this.elementSpacing = this.config.images.spacing || 40; // Use exact spacing from config
         this.totalWidth = 0;
+        
+        // Image refresh timing
+        this.lastImageSwap = 0;
+        this.imageSwapInterval = 2000; // Swap images every 2 seconds
+        this.imagesPerSwap = 3; // Number of images to swap at once
         
         this.initElements();
     }
     
     initElements() {
-        // Create alternating pattern of letters and images
+        // Pre-build the entire strip with all letters and images
         const text = this.stripConfig.text;
         let currentX = 0;
         
@@ -155,6 +161,8 @@ class Strip {
         console.log(`Available images: ${this.imageManager.config.images.queue.length}`);
         
         let letterIndex = 0; // Track letter index for alternating colors
+        
+        // First pass: create the full pattern of letters and images
         for (let i = 0; i < text.length; i++) {
             const letter = text[i];
             
@@ -172,34 +180,63 @@ class Strip {
                 currentX += this.calculateLetterWidth(letter) + this.elementSpacing;
             }
             
-            // Add image element between letters (if images are available)
-            if (i < text.length - 1 && this.imageManager.config.images.queue.length > 0) {
-                this.elements.push({
+            // Add image element after each letter (except the last one)
+            if (i < text.length - 1) {
+                const imageElement = {
                     type: 'image',
                     x: currentX,
                     width: this.config.images.elementSize.width,
                     height: this.config.images.elementSize.height,
-                    imageInfo: this.imageManager.getRandomImage()
-                });
+                    imageInfo: null // Will be populated below
+                };
+                
+                // Pre-load an image for this slot
+                if (this.imageManager.config.images.queue.length > 0) {
+                    imageElement.imageInfo = this.imageManager.getRandomImage();
+                }
+                
+                this.elements.push(imageElement);
+                this.imageElements.push(imageElement); // Keep reference for swapping
                 
                 currentX += this.config.images.elementSize.width + this.elementSpacing;
             }
         }
         
-        this.totalWidth = currentX;
+        this.baseWidth = currentX; // Store the original width
         
-        // Duplicate elements to ensure smooth scrolling
+        // Calculate how many copies we need for seamless scrolling
+        // We want at least 2.5x the display width to ensure no gaps
+        const minTotalWidth = this.config.display.width * 2.5;
+        const copiesNeeded = Math.max(2, Math.ceil(minTotalWidth / this.baseWidth));
+        
+        console.log(`Strip needs ${copiesNeeded} copies for seamless scrolling (base: ${this.baseWidth}px, target: ${minTotalWidth}px)`);
+        
+        // Store original elements before duplication
         const originalElements = [...this.elements];
-        originalElements.forEach(element => {
-            this.elements.push({
-                ...element,
-                x: element.x + this.totalWidth + this.elementSpacing * 2
+        
+        // Create multiple copies for seamless infinite scrolling
+        for (let copy = 1; copy < copiesNeeded; copy++) {
+            originalElements.forEach(element => {
+                const duplicatedElement = {
+                    ...element,
+                    x: element.x + (this.baseWidth + this.elementSpacing * 2) * copy
+                };
+                
+                this.elements.push(duplicatedElement);
+                
+                // If it's an image, add to imageElements array
+                if (element.type === 'image') {
+                    this.imageElements.push(duplicatedElement);
+                }
             });
-        });
+        }
         
-        this.totalWidth *= 2; // Account for duplication
+        this.totalWidth = this.baseWidth * copiesNeeded;
         
-        console.log(`Strip ${this.stripConfig.id} initialized with ${this.elements.length} elements, total width: ${this.totalWidth}`);
+        console.log(`Strip ${this.stripConfig.id} initialized:`);
+        console.log(`  - ${this.elements.length} total elements`);
+        console.log(`  - ${this.imageElements.length} image slots`);
+        console.log(`  - Total width: ${this.totalWidth}px`);
     }
     
     calculateLetterWidth(letter) {
@@ -223,24 +260,49 @@ class Strip {
                 
                 // Wrap around when element goes off screen
                 if (element.x + element.width < -this.config.display.width / 2) {
-                    element.x += this.totalWidth + this.elementSpacing * 2;
+                    element.x += this.baseWidth + this.elementSpacing * 2;
                 }
             } else {
                 element.x += speed;
                 
                 // Wrap around when element goes off screen
                 if (element.x > this.config.display.width + this.config.display.width / 2) {
-                    element.x -= this.totalWidth + this.elementSpacing * 2;
+                    element.x -= this.baseWidth + this.elementSpacing * 2;
                 }
             }
         }
         
-        // Occasionally refresh images in elements
-        if (Math.random() < 0.001 && this.imageManager.config.images.queue.length > 0) {
-            const imageElements = this.elements.filter(el => el.type === 'image');
-            if (imageElements.length > 0) {
-                const randomElement = imageElements[Math.floor(Math.random() * imageElements.length)];
-                randomElement.imageInfo = this.imageManager.getRandomImage();
+        // Periodically swap images (instead of random refreshing)
+        if (currentTime - this.lastImageSwap > this.imageSwapInterval) {
+            this.swapRandomImages();
+            this.lastImageSwap = currentTime;
+        }
+    }
+    
+    swapRandomImages() {
+        // Only swap if we have images available
+        if (this.imageManager.config.images.queue.length === 0 || this.imageElements.length === 0) {
+            return;
+        }
+        
+        // Select random image elements to swap
+        const elementsToSwap = Math.min(this.imagesPerSwap, this.imageElements.length);
+        const swappedIndices = new Set();
+        
+        for (let i = 0; i < elementsToSwap; i++) {
+            let randomIndex;
+            
+            // Pick a random index that hasn't been swapped yet
+            do {
+                randomIndex = Math.floor(Math.random() * this.imageElements.length);
+            } while (swappedIndices.has(randomIndex) && swappedIndices.size < this.imageElements.length);
+            
+            swappedIndices.add(randomIndex);
+            
+            // Get a new random image for this slot
+            const newImageInfo = this.imageManager.getRandomImage();
+            if (newImageInfo) {
+                this.imageElements[randomIndex].imageInfo = newImageInfo;
             }
         }
     }
