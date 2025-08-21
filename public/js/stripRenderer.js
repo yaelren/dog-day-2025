@@ -181,7 +181,8 @@ class Strip {
             }
         }
         
-        this.baseWidth = currentX; // Store the original width
+        // Remove the extra spacing after the last element
+        this.baseWidth = currentX - this.elementSpacing; // Store the original width without trailing space
         
         // Calculate how many copies we need for seamless scrolling
         const minTotalWidth = this.config.display.width * 2.5;
@@ -198,14 +199,14 @@ class Strip {
             originalElements.forEach(element => {
                 const duplicatedElement = {
                     ...element,
-                    x: element.x + (this.baseWidth + this.elementSpacing * 2) * copy
+                    x: element.x + (this.baseWidth + this.elementSpacing) * copy
                 };
                 
                 this.elements.push(duplicatedElement);
             });
         }
         
-        this.totalWidth = this.baseWidth * copiesNeeded;
+        this.totalWidth = (this.baseWidth + this.elementSpacing) * copiesNeeded - this.elementSpacing;
         
         console.log(`Strip ${this.stripConfig.id} initialized:`);
         console.log(`  - ${this.elements.length} total elements`);
