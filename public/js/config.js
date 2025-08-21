@@ -58,7 +58,7 @@ class Config {
         
         this.text = {
             fontSize: 602.15, // Exact font size: 602.15px
-            fontFamily: 'WixMadeforDisplay',
+            fontFamily: 'Wix Madefor Display',
             fontWeight: 700, // Bold
             fontStyle: 'Bold',
             letterSpacing: 0, // 0% letter spacing

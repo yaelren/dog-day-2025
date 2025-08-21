@@ -1,15 +1,22 @@
-// Image loading and management system
+// Image loading and management system with FIFO replacement
 class ImageManager {
     constructor(config) {
         this.config = config;
         this.pollingInterval = 3000; // Poll every 3 seconds
-        this.lastImageCount = 0;
+        
+        // Track all 22 image slots with their current content
+        this.imageSlots = new Array(22).fill(null);
+        this.realImagesQueue = []; // FIFO queue of real images (not placeholders)
+        this.nextSlotToReplace = 0; // Track which slot to replace next
         
         this.startPolling();
     }
     
-    startPolling() {
-        // Load initial images and config
+    async startPolling() {
+        // Load placeholder images first
+        await this.loadPlaceholders();
+        
+        // Then start checking for real images
         this.fetchImages();
         this.updateUI();
         
@@ -19,60 +26,106 @@ class ImageManager {
         }, this.pollingInterval);
     }
     
+    async loadPlaceholders() {
+        try {
+            // Load placeholder images from /api/placeholders endpoint
+            const response = await fetch('/api/placeholders');
+            const data = await response.json();
+            
+            console.log(`Loading ${data.images.length} placeholder images`);
+            
+            // Load up to 22 placeholders
+            const placeholdersToLoad = data.images.slice(0, 22);
+            
+            for (let i = 0; i < Math.min(22, placeholdersToLoad.length); i++) {
+                const imageInfo = placeholdersToLoad[i];
+                const processed = await this.loadImage(imageInfo, true); // true = isPlaceholder
+                this.imageSlots[i] = processed;
+            }
+            
+            // If we have fewer than 22 placeholders, fill remaining with duplicates
+            if (placeholdersToLoad.length < 22 && placeholdersToLoad.length > 0) {
+                for (let i = placeholdersToLoad.length; i < 22; i++) {
+                    const imageInfo = placeholdersToLoad[i % placeholdersToLoad.length];
+                    const processed = await this.loadImage(imageInfo, true);
+                    this.imageSlots[i] = processed;
+                }
+            }
+            
+            console.log('Placeholder images loaded into all 22 slots');
+            this.updateImageCount();
+            
+        } catch (error) {
+            console.error('Failed to load placeholders:', error);
+            // Fill with empty slots if placeholders fail
+            for (let i = 0; i < 22; i++) {
+                if (!this.imageSlots[i]) {
+                    this.imageSlots[i] = null;
+                }
+            }
+        }
+    }
+    
     async fetchImages() {
         try {
             const response = await fetch('/api/images');
             const data = await response.json();
             
-            if (data.images.length !== this.lastImageCount) {
-                if (this.lastImageCount === 0) {
-                    // Initial load
-                    await this.loadInitialImages(data.images);
-                } else if (data.images.length > this.lastImageCount) {
-                    // New images added
-                    const newImages = data.images.slice(this.lastImageCount);
-                    for (const imageInfo of newImages) {
-                        await this.handleNewImage(imageInfo);
-                    }
-                } else if (data.images.length < this.lastImageCount) {
-                    // Images were cleared
-                    this.clearImages();
-                    await this.loadInitialImages(data.images);
-                }
+            // Check for new real images
+            const newImages = data.images.filter(img => 
+                !this.realImagesQueue.some(existing => existing.filename === img.filename)
+            );
+            
+            if (newImages.length > 0) {
+                console.log(`Found ${newImages.length} new real images`);
                 
-                this.lastImageCount = data.images.length;
-                this.updateImageCount();
+                for (const imageInfo of newImages) {
+                    await this.handleNewRealImage(imageInfo);
+                }
             }
+            
         } catch (error) {
             console.error('Failed to fetch images:', error);
         }
     }
     
-    async handleNewImage(imageInfo) {
-        console.log(`New image detected: ${imageInfo.filename}`);
+    async handleNewRealImage(imageInfo) {
+        console.log(`Processing new real image: ${imageInfo.filename}`);
         
         // Load the new image
-        const processedImageInfo = await this.loadImage(imageInfo);
+        const processedImage = await this.loadImage(imageInfo, false); // false = not placeholder
         
-        // Notify strip renderer to replace an off-screen image
-        if (window.stripRenderer) {
-            window.stripRenderer.handleNewImage(processedImageInfo);
+        // Add to real images queue
+        this.realImagesQueue.push(processedImage);
+        
+        // Replace the next slot in rotation
+        const slotToReplace = this.nextSlotToReplace;
+        const oldImage = this.imageSlots[slotToReplace];
+        
+        console.log(`Replacing slot ${slotToReplace} (was: ${oldImage?.filename}) with ${imageInfo.filename}`);
+        
+        // Update the slot with new image
+        this.imageSlots[slotToReplace] = processedImage;
+        
+        // Move to next slot for next replacement (circular)
+        this.nextSlotToReplace = (this.nextSlotToReplace + 1) % 22;
+        
+        // If we've replaced all 22 slots and this is the 23rd+ image, 
+        // remove the oldest real image from queue (FIFO)
+        if (this.realImagesQueue.length > 22) {
+            const removedImage = this.realImagesQueue.shift();
+            console.log(`Removed oldest image from queue: ${removedImage.filename}`);
         }
-    }
-    
-    async loadInitialImages(images) {
-        console.log(`Loading ${images.length} initial images`);
         
-        for (const imageInfo of images) {
-            await this.loadImage(imageInfo);
+        // Notify strip renderer to update
+        if (window.stripRenderer) {
+            window.stripRenderer.updateImageSlots(this.imageSlots);
         }
         
         this.updateImageCount();
     }
     
-    // Method removed - replaced by handleNewImage
-    
-    async loadImage(imageInfo) {
+    async loadImage(imageInfo, isPlaceholder = false) {
         return new Promise((resolve, reject) => {
             const img = new Image();
             img.crossOrigin = 'anonymous';
@@ -87,11 +140,9 @@ class ImageManager {
                     ...imageInfo,
                     largeCanvas: largeCanvas,
                     croppedCanvas: croppedCanvas,
+                    isPlaceholder: isPlaceholder,
                     processedAt: Date.now()
                 };
-                
-                this.config.images.queue.push(processedImageInfo);
-                this.config.images.loaded.set(imageInfo.filename, processedImageInfo);
                 
                 resolve(processedImageInfo);
             };
@@ -101,8 +152,9 @@ class ImageManager {
                 reject(new Error(`Failed to load image: ${imageInfo.filename}`));
             };
             
-            // Use relative URL to current server for images
-            img.src = `/images/${encodeURIComponent(imageInfo.filename)}`;
+            // Use appropriate endpoint based on image type
+            const endpoint = isPlaceholder ? 'placeholders' : 'images';
+            img.src = `/${endpoint}/${encodeURIComponent(imageInfo.filename)}`;
         });
     }
     
@@ -139,10 +191,17 @@ class ImageManager {
         return canvas;
     }
     
-    clearImages() {
-        this.config.images.queue = [];
-        this.config.images.loaded.clear();
-        this.updateImageCount();
+    // Get all current images for initial strip setup
+    getAllImages() {
+        return this.imageSlots.filter(slot => slot !== null);
+    }
+    
+    // Get image by index (for strips to access specific slots)
+    getImageByIndex(index) {
+        if (index >= 0 && index < 22) {
+            return this.imageSlots[index];
+        }
+        return null;
     }
     
     refreshImages() {
@@ -150,37 +209,12 @@ class ImageManager {
         this.fetchImages();
     }
     
-    getRandomImage(size = 'large') {
-        if (this.config.images.queue.length === 0) return null;
-        const imageInfo = this.config.images.queue[Math.floor(Math.random() * this.config.images.queue.length)];
-        return {
-            ...imageInfo,
-            canvas: size === 'large' ? imageInfo.largeCanvas : imageInfo.croppedCanvas,
-            size: size
-        };
-    }
-    
-    getUniqueImage(size = 'large', usedImages = new Set()) {
-        if (this.config.images.queue.length === 0) return null;
-        
-        // Filter out already used images
-        const availableImages = this.config.images.queue.filter(img => !usedImages.has(img.filename));
-        
-        // If all images are used, fall back to any image
-        const imagePool = availableImages.length > 0 ? availableImages : this.config.images.queue;
-        const imageInfo = imagePool[Math.floor(Math.random() * imagePool.length)];
-        
-        return {
-            ...imageInfo,
-            canvas: size === 'large' ? imageInfo.largeCanvas : imageInfo.croppedCanvas,
-            size: size
-        };
-    }
-    
     updateImageCount() {
         const countElement = document.getElementById('imageCount');
         if (countElement) {
-            countElement.textContent = this.config.images.queue.length;
+            // Count real images (not placeholders)
+            const realImageCount = this.imageSlots.filter(slot => slot && !slot.isPlaceholder).length;
+            countElement.textContent = realImageCount;
         }
     }
     
@@ -195,10 +229,10 @@ class ImageManager {
                 folderElement.textContent = serverConfig.imageDirectory;
             }
             
-            // Update max images
+            // Update max images (always 22 now)
             const maxElement = document.getElementById('maxImages');
             if (maxElement) {
-                maxElement.textContent = serverConfig.maxImages;
+                maxElement.textContent = '22';
             }
         } catch (error) {
             console.error('Failed to fetch config:', error);

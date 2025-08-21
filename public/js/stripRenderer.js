@@ -27,61 +27,41 @@ class StripRenderer {
         this.ctx.imageSmoothingQuality = 'high';
     }
     
-    updateCanvasSize() {
-        // Fixed dimensions - no responsive scaling here
-        // The entire layout is scaled by the scaler.js
-        this.canvas.width = this.config.display.width;
-        this.canvas.height = this.config.display.canvasHeight;
-        this.scale = 1;
-        
-        // Set canvas size to actual design dimensions for internal calculations
-        this.canvas.width = this.config.display.width;
-        this.canvas.height = this.config.display.height;
-        
-        // Set CSS size to fit window
-        this.canvas.style.width = displayWidth + 'px';
-        this.canvas.style.height = displayHeight + 'px';
-        
-        // Center the canvas horizontally, position below header
-        this.canvas.style.left = (windowWidth - displayWidth) / 2 + 'px';
-        this.canvas.style.top = '64px'; // Always 64px below top for header
-        
-        // Store scale for reference
-        this.displayScale = scale;
-        
-        console.log(`Canvas scaled to ${displayWidth}x${displayHeight} (scale: ${scale.toFixed(2)})`);
-        
-        // Also scale text and image sizes based on display scale
-        this.updateElementSizes();
-        
-        // Re-initialize strips with new sizes
-        if (this.strips) {
-            this.initStrips();
-        }
-    }
-    
-    updateElementSizes() {
-        // Scale element sizes based on display scale
-        const baseFontSize = 280;
-        
-        // Update config with scaled font size
-        this.config.text.fontSize = baseFontSize * this.displayScale;
-        
-        // Scale image sizes
-        this.config.images.largeSize.width *= this.displayScale;
-        this.config.images.largeSize.height *= this.displayScale;
-        this.config.images.croppedSize.width *= this.displayScale;
-        this.config.images.croppedSize.height *= this.displayScale;
-        
-        console.log(`Scaled font size: ${this.config.text.fontSize.toFixed(0)}px`);
-        console.log(`Scaled large image size: ${this.config.images.largeSize.width.toFixed(0)}x${this.config.images.largeSize.height.toFixed(0)}px`);
-        console.log(`Scaled cropped image size: ${this.config.images.croppedSize.width.toFixed(0)}x${this.config.images.croppedSize.height.toFixed(0)}px`);
-    }
-    
     initStrips() {
+        // Randomly distribute the 22 image slots among strips
+        // Strip 1 needs 6 images, Strip 2 needs 8 images, Strip 3 needs 8 images
+        
+        // Create an array of all 22 slot indices
+        const allSlots = Array.from({ length: 22 }, (_, i) => i);
+        
+        // Shuffle the slots randomly
+        for (let i = allSlots.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [allSlots[i], allSlots[j]] = [allSlots[j], allSlots[i]];
+        }
+        
+        // Distribute shuffled slots to strips
+        this.imageSlotMapping = {
+            1: { slots: allSlots.slice(0, 6), count: 6 },     // Strip 1 gets 6 random slots
+            2: { slots: allSlots.slice(6, 14), count: 8 },    // Strip 2 gets 8 random slots
+            3: { slots: allSlots.slice(14, 22), count: 8 }    // Strip 3 gets 8 random slots
+        };
+        
+        console.log('Random slot distribution:');
+        console.log('Strip 1 slots:', this.imageSlotMapping[1].slots);
+        console.log('Strip 2 slots:', this.imageSlotMapping[2].slots);
+        console.log('Strip 3 slots:', this.imageSlotMapping[3].slots);
+        
         this.strips = this.config.strips.map(stripConfig => {
-            return new Strip(stripConfig, this.config, this.imageManager);
+            return new Strip(stripConfig, this.config, this.imageManager, this.imageSlotMapping[stripConfig.id]);
         });
+    }
+    
+    updateImageSlots(imageSlots) {
+        // When image slots are updated, refresh all strips
+        for (const strip of this.strips) {
+            strip.updateImages(imageSlots);
+        }
     }
     
     render(currentTime) {
@@ -134,32 +114,19 @@ class StripRenderer {
         }
         return null;
     }
-    
-    handleNewImage(newImageInfo) {
-        // Try to replace an off-screen image in one of the strips
-        for (const strip of this.strips) {
-            if (strip.replaceOffscreenImageWithNew(newImageInfo)) {
-                return true; // Successfully replaced
-            }
-        }
-        return false; // No off-screen slots available
-    }
 }
 
 // Individual strip class
 class Strip {
-    constructor(stripConfig, config, imageManager) {
+    constructor(stripConfig, config, imageManager, slotMapping) {
         this.config = config;
         this.stripConfig = stripConfig;
         this.imageManager = imageManager;
+        this.slotMapping = slotMapping; // Which image slots this strip uses
         
         this.elements = [];
-        this.imageElements = []; // Keep track of image elements for swapping
-        this.elementSpacing = this.config.images.spacing || 40; // Use exact spacing from config
+        this.elementSpacing = this.config.images.spacing || 40;
         this.totalWidth = 0;
-        
-        // Track used images to prevent duplicates
-        this.usedImages = new Set();
         
         this.initElements();
     }
@@ -170,9 +137,10 @@ class Strip {
         let currentX = 0;
         
         console.log(`Initializing strip ${this.stripConfig.id} with pattern:`, pattern);
-        console.log(`Available images: ${this.imageManager.config.images.queue.length}`);
+        console.log(`Using image slots:`, this.slotMapping.slots);
         
         let letterIndex = 0; // Track letter index for alternating colors
+        let imageSlotIndex = 0; // Track which slot to use for this strip
         
         // Create elements based on pattern
         for (let i = 0; i < pattern.length; i++) {
@@ -181,25 +149,21 @@ class Strip {
             if (item === 'large' || item === 'cropped') {
                 // Add image element
                 const size = item === 'large' ? this.config.images.largeSize : this.config.images.croppedSize;
+                
+                // Get the global slot index from the randomly assigned slots
+                const globalSlotIndex = this.slotMapping.slots[imageSlotIndex];
+                
                 const imageElement = {
                     type: 'image',
                     imageType: item,
                     x: currentX,
                     width: size.width,
                     height: size.height,
-                    imageInfo: null // Will be populated below
+                    slotIndex: globalSlotIndex // Store which slot this element uses
                 };
                 
-                // Pre-load a unique image for this slot
-                if (this.imageManager.config.images.queue.length > 0) {
-                    imageElement.imageInfo = this.imageManager.getUniqueImage(item, this.usedImages);
-                    if (imageElement.imageInfo?.filename) {
-                        this.usedImages.add(imageElement.imageInfo.filename);
-                    }
-                }
-                
                 this.elements.push(imageElement);
-                this.imageElements.push(imageElement); // Keep reference for swapping
+                imageSlotIndex++;
                 
                 currentX += size.width + this.elementSpacing;
             } else {
@@ -220,7 +184,6 @@ class Strip {
         this.baseWidth = currentX; // Store the original width
         
         // Calculate how many copies we need for seamless scrolling
-        // We want at least 2.5x the display width to ensure no gaps
         const minTotalWidth = this.config.display.width * 2.5;
         const copiesNeeded = Math.max(2, Math.ceil(minTotalWidth / this.baseWidth));
         
@@ -230,6 +193,7 @@ class Strip {
         const originalElements = [...this.elements];
         
         // Create multiple copies for seamless infinite scrolling
+        // But images still reference the same slot indices
         for (let copy = 1; copy < copiesNeeded; copy++) {
             originalElements.forEach(element => {
                 const duplicatedElement = {
@@ -238,11 +202,6 @@ class Strip {
                 };
                 
                 this.elements.push(duplicatedElement);
-                
-                // If it's an image, add to imageElements array
-                if (element.type === 'image') {
-                    this.imageElements.push(duplicatedElement);
-                }
             });
         }
         
@@ -250,7 +209,7 @@ class Strip {
         
         console.log(`Strip ${this.stripConfig.id} initialized:`);
         console.log(`  - ${this.elements.length} total elements`);
-        console.log(`  - ${this.imageElements.length} image slots`);
+        console.log(`  - ${this.slotMapping.count} unique image slots`);
         console.log(`  - Total width: ${this.totalWidth}px`);
     }
     
@@ -258,10 +217,17 @@ class Strip {
         // Create a temporary canvas to measure exact text width
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
-        ctx.font = `${this.config.text.fontWeight} ${this.config.text.fontSize}px ${this.config.text.fontFamily}`;
+        ctx.font = `${this.config.text.fontWeight} ${this.config.text.fontSize}px "${this.config.text.fontFamily}", sans-serif`;
         
         const metrics = ctx.measureText(letter.toUpperCase());
         return metrics.width;
+    }
+    
+    updateImages(imageSlots) {
+        // Update called when image slots change
+        // Elements already know their slot indices, so they'll automatically
+        // display the updated content on next render
+        this.currentImageSlots = imageSlots;
     }
     
     update(currentTime) {
@@ -275,59 +241,23 @@ class Strip {
                 
                 // Wrap around when element goes off screen
                 if (element.x + element.width < -this.config.display.width / 2) {
-                    element.x += this.baseWidth + this.elementSpacing * 2;
+                    element.x += this.totalWidth;
                 }
             } else {
                 element.x += speed;
                 
                 // Wrap around when element goes off screen
                 if (element.x > this.config.display.width + this.config.display.width / 2) {
-                    element.x -= this.baseWidth + this.elementSpacing * 2;
+                    element.x -= this.totalWidth;
                 }
             }
         }
-        
-        // Images are now static - no periodic swapping
-    }
-    
-    replaceOffscreenImageWithNew(newImageInfo) {
-        // Find off-screen image elements that can be replaced
-        const offscreenElements = this.imageElements.filter(element => {
-            // Element is off-screen if it's completely outside the visible area
-            return element.x + element.width < -100 || element.x > this.config.display.width + 100;
-        });
-        
-        if (offscreenElements.length > 0) {
-            // Pick a random off-screen element to replace
-            const elementToReplace = offscreenElements[Math.floor(Math.random() * offscreenElements.length)];
-            
-            // Remove old image from used set if it exists
-            if (elementToReplace.imageInfo?.filename) {
-                this.usedImages.delete(elementToReplace.imageInfo.filename);
-            }
-            
-            // Assign new image and mark as used
-            elementToReplace.imageInfo = newImageInfo;
-            if (newImageInfo?.filename) {
-                this.usedImages.add(newImageInfo.filename);
-            }
-            
-            console.log(`Replaced off-screen image with ${newImageInfo?.filename}`);
-            return true;
-        }
-        
-        return false; // No off-screen elements found
     }
     
     render(ctx) {
         let renderedElements = 0;
         
         ctx.save();
-        
-        // Debug: Log first few elements on first render
-        if (renderedElements === 0 && this.elements.length > 0) {
-            // console.log(`Strip ${this.stripConfig.id} rendering ${this.elements.length} elements. First element:`, this.elements[0]);
-        }
         
         for (const element of this.elements) {
             // Skip elements completely off screen
@@ -339,8 +269,12 @@ class Strip {
             
             if (element.type === 'letter') {
                 this.renderLetter(ctx, element, centerY);
-            } else if (element.type === 'image' && element.imageInfo?.canvas) {
-                this.renderImage(ctx, element, centerY);
+            } else if (element.type === 'image') {
+                // Get the current image from the slot
+                const imageInfo = this.imageManager.getImageByIndex(element.slotIndex);
+                if (imageInfo) {
+                    this.renderImage(ctx, element, imageInfo, centerY);
+                }
             }
             
             renderedElements++;
@@ -351,8 +285,8 @@ class Strip {
     }
     
     renderLetter(ctx, element, centerY) {
-        // Apply exact font specifications
-        ctx.font = `${this.config.text.fontWeight} ${this.config.text.fontSize}px ${this.config.text.fontFamily}`;
+        // Apply exact font specifications - use quotes for font family with spaces
+        ctx.font = `${this.config.text.fontWeight} ${this.config.text.fontSize}px "${this.config.text.fontFamily}", sans-serif`;
         ctx.letterSpacing = `${this.config.text.letterSpacing}px`;
         
         ctx.fillStyle = element.color;
@@ -362,22 +296,24 @@ class Strip {
         // Transform to uppercase as specified
         const text = element.content.toUpperCase();
         
-        // Add text stroke for better visibility
-        ctx.strokeStyle = 'rgba(0, 0, 0, 0.3)';
-        ctx.lineWidth = 4;
-        ctx.strokeText(text, element.x + element.width / 2, centerY);
+        // Draw text without stroke/outline
         ctx.fillText(text, element.x + element.width / 2, centerY);
     }
     
-    renderImage(ctx, element, centerY) {
+    renderImage(ctx, element, imageInfo, centerY) {
         const imageY = centerY - element.height / 2;
         const x = element.x;
         const y = imageY;
         const width = element.width;
         const height = element.height;
         
-        // Draw the image directly (no rounded corners, no border)
-        ctx.drawImage(element.imageInfo.canvas, x, y, width, height);
+        // Use the appropriate canvas based on image type
+        const canvas = element.imageType === 'large' ? imageInfo.largeCanvas : imageInfo.croppedCanvas;
+        
+        // Draw the image directly
+        if (canvas) {
+            ctx.drawImage(canvas, x, y, width, height);
+        }
     }
     
     getElementAt(x, y) {

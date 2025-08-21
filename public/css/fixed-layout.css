@@ -7,20 +7,8 @@
     --color-brown: rgba(123, 66, 53, 1);
 }
 
-/* Wix Font */
-@font-face {
-    font-family: 'WixMadeforDisplay';
-    src: url('../assets/fonts/WixMadeforDisplayApp-Bold_1932211636.ttf') format('truetype');
-    font-weight: 700;
-    font-style: normal;
-}
-
-@font-face {
-    font-family: 'WixMadeforDisplay';
-    src: url('../assets/fonts/WixMadeforDisplayApp-ExtraBold_1934865085.ttf') format('truetype');
-    font-weight: 800;
-    font-style: normal;
-}
+/* Google Fonts - Wix Madefor Display */
+@import url('https://fonts.googleapis.com/css2?family=Wix+Madefor+Display:wght@400;500;600;700;800&display=swap');
 
 /* Reset */
 * {
@@ -44,7 +32,7 @@ html, body {
     background: var(--color-brown);
     position: relative;
     transform-origin: top left;
-    font-family: 'WixMadeforDisplay', sans-serif;
+    font-family: 'Wix Madefor Display', sans-serif;
 }
 
 /* Header Bar - Fixed size */
@@ -77,7 +65,7 @@ html, body {
     color: var(--color-yellow);
     font-size: 40px; /* Set to 40px as requested */
     font-weight: 700;
-    font-family: 'WixMadeforDisplay', sans-serif;
+    font-family: 'Wix Madefor Display', sans-serif;
     position: absolute;
 }
 

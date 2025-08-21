@@ -16,6 +16,7 @@ const MAX_IMAGES = parseInt(process.env.MAX_IMAGES) || 10;
 app.use(cors());
 app.use(express.static(path.join(__dirname, '../public')));
 app.use('/images', express.static(IMAGE_DIRECTORY));
+app.use('/placeholders', express.static(path.join(__dirname, '../placeholders')));
 
 // Image queue management
 class ImageQueue {
@@ -110,6 +111,31 @@ app.get('/api/config', (req, res) => {
     displayWidth: process.env.DISPLAY_WIDTH || 4640,
     displayHeight: process.env.DISPLAY_HEIGHT || 1760
   });
+});
+
+// API endpoint for placeholder images
+app.get('/api/placeholders', async (req, res) => {
+  try {
+    const placeholderDir = path.join(__dirname, '../placeholders');
+    const files = await fs.readdir(placeholderDir);
+    const imageFiles = files.filter(file => 
+      /\.(jpg|jpeg|png)$/i.test(file)
+    );
+    
+    const placeholders = imageFiles.map(filename => ({
+      filename: filename,
+      path: path.join(placeholderDir, filename),
+      isPlaceholder: true
+    }));
+    
+    res.json({
+      images: placeholders,
+      count: placeholders.length
+    });
+  } catch (error) {
+    console.error('Error loading placeholder images:', error);
+    res.json({ images: [], count: 0 });
+  }
 });
 
 app.post('/api/clear', (req, res) => {

@@ -68,8 +68,10 @@ class App {
         // Wait for the custom font to load
         if ('fonts' in document) {
             try {
-                await document.fonts.load('400 16px WixMadeforDisplay');
-                console.log('WixMadeforDisplay font loaded successfully');
+                // Load both weights we're using: 700 (bold) and 800 (extra bold)
+                await document.fonts.load('700 100px "Wix Madefor Display"');
+                await document.fonts.load('800 100px "Wix Madefor Display"');
+                console.log('Wix Madefor Display font loaded successfully');
             } catch (error) {
                 console.error('Font loading failed:', error);
             }
