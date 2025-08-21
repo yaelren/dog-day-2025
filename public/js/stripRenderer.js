@@ -28,8 +28,17 @@ class StripRenderer {
     }
     
     initStrips() {
-        // Randomly distribute the 22 image slots among strips
-        // Strip 1 needs 6 images, Strip 2 needs 8 images, Strip 3 needs 8 images
+        // Count actual photo images (large/cropped) in each strip pattern
+        const stripPhotoCounts = this.config.strips.map(strip => {
+            const photoCount = strip.pattern.filter(item => item === 'large' || item === 'cropped').length;
+            return { stripId: strip.id, photoCount };
+        });
+        
+        console.log('Photo counts per strip:', stripPhotoCounts);
+        
+        // Calculate total photos needed
+        const totalPhotos = stripPhotoCounts.reduce((sum, strip) => sum + strip.photoCount, 0);
+        console.log('Total photos needed:', totalPhotos);
         
         // Create an array of all 22 slot indices
         const allSlots = Array.from({ length: 22 }, (_, i) => i);
@@ -40,12 +49,17 @@ class StripRenderer {
             [allSlots[i], allSlots[j]] = [allSlots[j], allSlots[i]];
         }
         
-        // Distribute shuffled slots to strips
-        this.imageSlotMapping = {
-            1: { slots: allSlots.slice(0, 6), count: 6 },     // Strip 1 gets 6 random slots
-            2: { slots: allSlots.slice(6, 14), count: 8 },    // Strip 2 gets 8 random slots
-            3: { slots: allSlots.slice(14, 22), count: 8 }    // Strip 3 gets 8 random slots
-        };
+        // Distribute shuffled slots to strips based on actual photo counts
+        this.imageSlotMapping = {};
+        let currentIndex = 0;
+        
+        stripPhotoCounts.forEach(({ stripId, photoCount }) => {
+            this.imageSlotMapping[stripId] = {
+                slots: allSlots.slice(currentIndex, currentIndex + photoCount),
+                count: photoCount
+            };
+            currentIndex += photoCount;
+        });
         
         console.log('Random slot distribution:');
         console.log('Strip 1 slots:', this.imageSlotMapping[1].slots);
@@ -75,7 +89,7 @@ class StripRenderer {
         }
         
         // Clear canvas with brown background
-        this.ctx.fillStyle = this.config.text.colors.brown || 'rgba(123, 66, 53, 1)';
+        this.ctx.fillStyle = this.config.background.color;
         this.ctx.fillRect(0, 0, this.config.display.width, this.config.display.canvasHeight);
         
         // Render each strip
@@ -139,7 +153,6 @@ class Strip {
         console.log(`Initializing strip ${this.stripConfig.id} with pattern:`, pattern);
         console.log(`Using image slots:`, this.slotMapping.slots);
         
-        let letterIndex = 0; // Track letter index for alternating colors
         let imageSlotIndex = 0; // Track which slot to use for this strip
         
         // Create elements based on pattern
@@ -147,14 +160,14 @@ class Strip {
             const item = pattern[i];
             
             if (item === 'large' || item === 'cropped') {
-                // Add image element
+                // Add photo image element
                 const size = item === 'large' ? this.config.images.largeSize : this.config.images.croppedSize;
                 
                 // Get the global slot index from the randomly assigned slots
                 const globalSlotIndex = this.slotMapping.slots[imageSlotIndex];
                 
                 const imageElement = {
-                    type: 'image',
+                    type: 'photo',
                     imageType: item,
                     x: currentX,
                     width: size.width,
@@ -166,18 +179,23 @@ class Strip {
                 imageSlotIndex++;
                 
                 currentX += size.width + this.elementSpacing;
-            } else {
-                // Add letter element
-                this.elements.push({
+            } else if (item.type === 'letter') {
+                // Add letter image element with predefined dimensions
+                const letterDimensions = this.config.letters.dimensions[item.letter];
+                const letterElement = {
                     type: 'letter',
-                    content: item.toUpperCase(),
+                    letter: item.letter,
+                    color: item.color,
                     x: currentX,
-                    width: this.calculateLetterWidth(item),
-                    height: this.config.display.stripHeight,
-                    color: this.config.getAlternatingColor(letterIndex++)
-                });
+                    imagePath: `${this.config.letters.basePath}${item.letter}-${item.color}.png`,
+                    image: null, // Will be loaded asynchronously
+                    width: letterDimensions.width,
+                    height: letterDimensions.height
+                };
                 
-                currentX += this.calculateLetterWidth(item) + this.elementSpacing;
+                this.elements.push(letterElement);
+                
+                currentX += letterElement.width + this.elementSpacing;
             }
         }
         
@@ -194,7 +212,7 @@ class Strip {
         const originalElements = [...this.elements];
         
         // Create multiple copies for seamless infinite scrolling
-        // But images still reference the same slot indices
+        // baseWidth already excludes trailing spacing, so we need to add elementSpacing between copies
         for (let copy = 1; copy < copiesNeeded; copy++) {
             originalElements.forEach(element => {
                 const duplicatedElement = {
@@ -211,18 +229,52 @@ class Strip {
         console.log(`Strip ${this.stripConfig.id} initialized:`);
         console.log(`  - ${this.elements.length} total elements`);
         console.log(`  - ${this.slotMapping.count} unique image slots`);
+        console.log(`  - Base width: ${this.baseWidth}px (without trailing spacing)`);
+        console.log(`  - Copy spacing: ${this.baseWidth + this.elementSpacing}px (base + 40px gap)`);
         console.log(`  - Total width: ${this.totalWidth}px`);
+        
+        // Debug: show positions of first few elements of each copy
+        if (copiesNeeded > 1) {
+            const elementsPerCopy = originalElements.length;
+            console.log(`  - First element copy 1: x=${this.elements[0].x}`);
+            console.log(`  - First element copy 2: x=${this.elements[elementsPerCopy].x}`);
+            console.log(`  - Last element copy 1: x=${this.elements[elementsPerCopy-1].x}, width=${this.elements[elementsPerCopy-1].width}`);
+            console.log(`  - Gap between copies: ${this.elements[elementsPerCopy].x - (this.elements[elementsPerCopy-1].x + this.elements[elementsPerCopy-1].width)}px`);
+        }
+        
+        // Load letter images
+        this.loadLetterImages();
     }
     
-    calculateLetterWidth(letter) {
-        // Create a temporary canvas to measure exact text width
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        ctx.font = `${this.config.text.fontWeight} ${this.config.text.fontSize}px "${this.config.text.fontFamily}", sans-serif`;
+    loadLetterImages() {
+        const letterElements = this.elements.filter(el => el.type === 'letter');
+        const uniqueImages = new Map();
         
-        const metrics = ctx.measureText(letter.toUpperCase());
-        return metrics.width;
+        // Collect unique image paths
+        letterElements.forEach(element => {
+            if (!uniqueImages.has(element.imagePath)) {
+                uniqueImages.set(element.imagePath, []);
+            }
+            uniqueImages.get(element.imagePath).push(element);
+        });
+        
+        // Load each unique image (dimensions already set from config)
+        uniqueImages.forEach((elements, imagePath) => {
+            const img = new Image();
+            img.onload = () => {
+                // Just assign the loaded image - dimensions already set
+                elements.forEach(element => {
+                    element.image = img;
+                });
+                console.log(`Loaded letter image: ${imagePath}`);
+            };
+            img.onerror = () => {
+                console.warn(`Failed to load letter image: ${imagePath}`);
+            };
+            img.src = imagePath;
+        });
     }
+
     
     updateImages(imageSlots) {
         // Update called when image slots change
@@ -270,11 +322,11 @@ class Strip {
             
             if (element.type === 'letter') {
                 this.renderLetter(ctx, element, centerY);
-            } else if (element.type === 'image') {
-                // Get the current image from the slot
+            } else if (element.type === 'photo') {
+                // Get the current photo from the slot
                 const imageInfo = this.imageManager.getImageByIndex(element.slotIndex);
                 if (imageInfo) {
-                    this.renderImage(ctx, element, imageInfo, centerY);
+                    this.renderPhoto(ctx, element, imageInfo, centerY);
                 }
             }
             
@@ -286,22 +338,18 @@ class Strip {
     }
     
     renderLetter(ctx, element, centerY) {
-        // Apply exact font specifications - use quotes for font family with spaces
-        ctx.font = `${this.config.text.fontWeight} ${this.config.text.fontSize}px "${this.config.text.fontFamily}", sans-serif`;
-        ctx.letterSpacing = `${this.config.text.letterSpacing}px`;
-        
-        ctx.fillStyle = element.color;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        
-        // Transform to uppercase as specified
-        const text = element.content.toUpperCase();
-        
-        // Draw text without stroke/outline
-        ctx.fillText(text, element.x + element.width / 2, centerY);
+        // Render letter image
+        if (element.image) {
+            const x = element.x;
+            const y = centerY - element.height / 2;
+            
+            // Draw the letter image at its natural size
+            ctx.drawImage(element.image, x, y, element.width, element.height);
+        }
+        // No fallback needed - either the image renders or it doesn't
     }
     
-    renderImage(ctx, element, imageInfo, centerY) {
+    renderPhoto(ctx, element, imageInfo, centerY) {
         const imageY = centerY - element.height / 2;
         const x = element.x;
         const y = imageY;
@@ -311,9 +359,16 @@ class Strip {
         // Use the appropriate canvas based on image type
         const canvas = element.imageType === 'large' ? imageInfo.largeCanvas : imageInfo.croppedCanvas;
         
-        // Draw the image directly
+        // Draw the photo with rounded corners
         if (canvas) {
+            const radius = 20; // Corner radius in pixels
+            
+            ctx.save();
+            ctx.beginPath();
+            ctx.roundRect(x, y, width, height, radius);
+            ctx.clip();
             ctx.drawImage(canvas, x, y, width, height);
+            ctx.restore();
         }
     }
     

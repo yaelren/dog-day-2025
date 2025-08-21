@@ -12,21 +12,64 @@ class Config {
         this.strips = [
             {
                 id: 1,
-                pattern: ['large','W', 'large', 'H', 'large', 'O', 'large', 'W', 'large', 'H', 'large', 'O'], // W-H-O with large images
+                pattern: [
+                    'large',
+                    { type: 'letter', letter: 'W', color: 'Yellow' },
+                    'large',
+                    { type: 'letter', letter: 'H', color: 'Purple' },
+                    'large',
+                    { type: 'letter', letter: 'O', color: 'Yellow' },
+                    'large',
+                    { type: 'letter', letter: 'W', color: 'Yellow' },
+                    'large',
+                    { type: 'letter', letter: 'H', color: 'Purple' },
+                    'large',
+                    { type: 'letter', letter: 'O', color: 'Yellow' }
+                ],
                 direction: 'left',
                 speed: 2,
                 y: 0
             },
             {
                 id: 2,
-                pattern: ['O', 'cropped', 'large', 'O', 'large', 'O', 'cropped', 'O', 'cropped', 'large', 'O', 'large', 'O', 'cropped'], // Second row pattern
+                pattern: [
+                    { type: 'letter', letter: 'O', color: 'Yellow' },
+                    'cropped',
+                    'large',
+                    { type: 'letter', letter: 'O', color: 'Purple' },
+                    'large',
+                    { type: 'letter', letter: 'O', color: 'Yellow' },
+                    'cropped',
+                    { type: 'letter', letter: 'O', color: 'Purple' },
+                    'cropped',
+                    'large',
+                    { type: 'letter', letter: 'O', color: 'Yellow' },
+                    'large',
+                    { type: 'letter', letter: 'O', color: 'Purple' },
+                    'cropped'
+                ],
                 direction: 'right',
                 speed: 2.5,
                 y: 551
             },
             {
                 id: 3,
-                pattern: ['large', 'O', 'cropped', 'large', 'F', 'large', '!', 'large', 'O', 'cropped', 'large', 'F', 'large', '!'], // Last row pattern
+                pattern: [
+                    'large',
+                    { type: 'letter', letter: 'O', color: 'Yellow' },
+                    'cropped',
+                    'large',
+                    { type: 'letter', letter: 'F', color: 'Purple' },
+                    'large',
+                    { type: 'letter', letter: '!', color: 'Yellow' },
+                    'large',
+                    { type: 'letter', letter: 'O', color: 'Purple' },
+                    'cropped',
+                    'large',
+                    { type: 'letter', letter: 'F', color: 'Purple' },
+                    'large',
+                    { type: 'letter', letter: '!', color: 'Yellow' }
+                ],
                 direction: 'left',
                 speed: 1.8,
                 y: 1102
@@ -56,19 +99,19 @@ class Config {
             spacing: 40 // Exact spacing between images in pixels
         };
         
-        this.text = {
-            fontSize: 602.15, // Exact font size: 602.15px
-            fontFamily: 'Wix Madefor Display',
-            fontWeight: 700, // Bold
-            fontStyle: 'Bold',
-            letterSpacing: 0, // 0% letter spacing
-            lineHeight: 1, // 100% line height
-            textTransform: 'uppercase',
-            colors: {
-                yellow: 'rgba(253, 255, 203, 1)',
-                pink: 'rgba(220, 192, 255, 1)',
-                brown: 'rgba(123, 66, 53, 1)'
+        this.letters = {
+            basePath: 'assets/letters/',
+            dimensions: {
+                'W': { width: 646, height: 484 },
+                'H': { width: 454, height: 484 },
+                'O': { width: 521, height: 484 },
+                'F': { width: 357, height: 484 },
+                '!': { width: 158, height: 484 }
             }
+        };
+        
+        this.background = {
+            color: 'rgba(123, 66, 53, 1)' // Brown background
         };
         
         this.performance = {
@@ -91,15 +134,6 @@ class Config {
         this.zoom[property] = value;
     }
     
-    getAlternatingColor(index) {
-        // Alternates between yellow and pink
-        return index % 2 === 0 ? this.text.colors.yellow : this.text.colors.pink;
-    }
-    
-    getRandomColor() {
-        // For backwards compatibility, randomly choose yellow or pink
-        return Math.random() < 0.5 ? this.text.colors.yellow : this.text.colors.pink;
-    }
 }
 
 

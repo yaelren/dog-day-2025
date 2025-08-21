@@ -9,6 +9,8 @@ class ZoomManager {
         this.setupCanvas();
         
         this.isZooming = false;
+        this.isZoomedIn = false;
+        this.zoomTimer = null;
         this.currentZoom = {
             element: null,
             startTime: 0,
@@ -49,9 +51,9 @@ class ZoomManager {
             this.triggerZoom();
         }
         
-        // Update current zoom animation
-        if (this.isZooming) {
-            this.updateZoom(currentTime);
+        // Render zoom if active
+        if (this.isZoomedIn && this.currentZoom.element) {
+            this.renderLiveZoom();
         }
     }
     
@@ -105,93 +107,73 @@ class ZoomManager {
     
     startZoom(targetElement) {
         this.isZooming = true;
+        this.isZoomedIn = true;
         this.currentZoom = {
             element: targetElement,
             startTime: Date.now(),
-            duration: this.config.zoom.duration
+            duration: this.config.zoom.duration,
+            targetX: targetElement.centerX,
+            targetY: targetElement.centerY,
+            scale: this.config.zoom.scale
         };
         
         console.log(`Starting zoom to element at (${targetElement.centerX}, ${targetElement.centerY})`);
         
-        // Use GSAP for smooth zoom animation
-        const zoomData = {
-            scale: 1,
-            x: 0,
-            y: 0,
-            opacity: 1
-        };
-        
-        // Calculate zoom target position (centered on screen)
-        const targetX = this.config.display.width / 2 - targetElement.centerX;
-        const targetY = this.config.display.height / 2 - targetElement.centerY;
-        
-        // Create zoom in → stay → zoom out timeline
-        gsap.timeline()
-            .to(zoomData, {
-                duration: 1, // 1 second zoom in
-                scale: this.config.zoom.scale,
-                x: targetX,
-                y: targetY,
-                ease: "power2.inOut",
-                onUpdate: () => {
-                    this.renderZoom(zoomData);
-                }
-            })
-            .to(zoomData, {
-                duration: 2, // Stay zoomed for 2 seconds
-                onUpdate: () => {
-                    this.renderZoom(zoomData);
-                }
-            })
-            .to(zoomData, {
-                duration: 1, // 1 second zoom out
-                scale: 1,
-                x: 0,
-                y: 0,
-                ease: "power2.inOut",
-                onUpdate: () => {
-                    this.renderZoom(zoomData);
-                },
-                onComplete: () => {
-                    this.endZoom();
-                }
-            });
+        // Set timer to cut back to full view after staying zoomed
+        this.zoomTimer = setTimeout(() => {
+            this.cutToFullView();
+        }, 2000); // Stay zoomed for 2 seconds
     }
     
-    renderZoom(zoomData) {
+    renderLiveZoom() {
         // Clear zoom canvas
         this.ctx.clearRect(0, 0, this.config.display.width, this.config.display.height);
         
-        if (zoomData.scale > 1.01) { // Only render if actually zooming
-            this.ctx.save();
-            
-            // Apply zoom transformation
-            this.ctx.translate(this.config.display.width / 2, this.config.display.height / 2);
-            this.ctx.scale(zoomData.scale, zoomData.scale);
-            this.ctx.translate(-this.config.display.width / 2 + zoomData.x / zoomData.scale, 
-                            -this.config.display.height / 2 + zoomData.y / zoomData.scale);
-            
-            // Copy main canvas content
-            const mainCanvas = document.getElementById('mainCanvas');
-            this.ctx.globalAlpha = zoomData.opacity;
-            this.ctx.drawImage(mainCanvas, 0, 0);
-            
-            this.ctx.restore();
-        }
+        if (!this.currentZoom || !this.isZoomedIn) return;
+        
+        this.ctx.save();
+        
+        // Get current main canvas content (live, updated each frame)
+        const mainCanvas = document.getElementById('mainCanvas');
+        
+        // Calculate zoom target position (centered on screen)
+        const targetX = this.config.display.width / 2 - this.currentZoom.targetX;
+        const targetY = this.config.display.height / 2 - this.currentZoom.targetY;
+        
+        // Apply zoom transformation to show a magnified portion
+        this.ctx.translate(this.config.display.width / 2, this.config.display.height / 2);
+        this.ctx.scale(this.currentZoom.scale, this.currentZoom.scale);
+        this.ctx.translate(-this.config.display.width / 2 + targetX / this.currentZoom.scale, 
+                        -this.config.display.height / 2 + targetY / this.currentZoom.scale);
+        
+        // Draw the live zoomed content
+        this.ctx.drawImage(mainCanvas, 0, 0);
+        
+        this.ctx.restore();
     }
     
-    updateZoom(currentTime) {
-        const elapsed = currentTime - this.currentZoom.startTime;
+    
+    cutToFullView() {
+        // Clear zoom canvas to show full view
+        this.ctx.clearRect(0, 0, this.config.display.width, this.config.display.height);
+        this.isZoomedIn = false;
         
-        // Check if zoom animation should be complete
-        if (elapsed >= this.currentZoom.duration) {
+        // End zoom after a brief moment
+        setTimeout(() => {
             this.endZoom();
-        }
+        }, 50); // Very brief delay before scheduling next zoom
     }
     
     endZoom() {
         this.isZooming = false;
+        this.isZoomedIn = false;
         this.currentZoom.element = null;
+        
+        // Clear any existing timer
+        if (this.zoomTimer) {
+            clearTimeout(this.zoomTimer);
+            this.zoomTimer = null;
+        }
         
         // Clear zoom canvas
         this.ctx.clearRect(0, 0, this.config.display.width, this.config.display.height);
@@ -199,7 +181,7 @@ class ZoomManager {
         // Schedule next zoom
         this.nextZoomTime = Date.now() + this.config.zoom.frequency;
         
-        console.log('Zoom animation complete');
+        console.log('Zoom sequence complete');
     }
     
     forceZoom() {
