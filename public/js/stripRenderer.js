@@ -34,11 +34,9 @@ class StripRenderer {
             return { stripId: strip.id, photoCount };
         });
         
-        console.log('Photo counts per strip:', stripPhotoCounts);
         
         // Calculate total photos needed
         const totalPhotos = stripPhotoCounts.reduce((sum, strip) => sum + strip.photoCount, 0);
-        console.log('Total photos needed:', totalPhotos);
         
         // Create an array of all 22 slot indices
         const allSlots = Array.from({ length: 22 }, (_, i) => i);
@@ -61,10 +59,6 @@ class StripRenderer {
             currentIndex += photoCount;
         });
         
-        console.log('Random slot distribution:');
-        console.log('Strip 1 slots:', this.imageSlotMapping[1].slots);
-        console.log('Strip 2 slots:', this.imageSlotMapping[2].slots);
-        console.log('Strip 3 slots:', this.imageSlotMapping[3].slots);
         
         this.strips = this.config.strips.map(stripConfig => {
             return new Strip(stripConfig, this.config, this.imageManager, this.imageSlotMapping[stripConfig.id]);
@@ -150,8 +144,6 @@ class Strip {
         const pattern = this.stripConfig.pattern;
         let currentX = 0;
         
-        console.log(`Initializing strip ${this.stripConfig.id} with pattern:`, pattern);
-        console.log(`Using image slots:`, this.slotMapping.slots);
         
         let imageSlotIndex = 0; // Track which slot to use for this strip
         
@@ -206,7 +198,6 @@ class Strip {
         const minTotalWidth = this.config.display.width * 2.5;
         const copiesNeeded = Math.max(2, Math.ceil(minTotalWidth / this.baseWidth));
         
-        console.log(`Strip needs ${copiesNeeded} copies for seamless scrolling (base: ${this.baseWidth}px, target: ${minTotalWidth}px)`);
         
         // Store original elements before duplication
         const originalElements = [...this.elements];
@@ -226,20 +217,10 @@ class Strip {
         
         this.totalWidth = (this.baseWidth + this.elementSpacing) * copiesNeeded - this.elementSpacing;
         
-        console.log(`Strip ${this.stripConfig.id} initialized:`);
-        console.log(`  - ${this.elements.length} total elements`);
-        console.log(`  - ${this.slotMapping.count} unique image slots`);
-        console.log(`  - Base width: ${this.baseWidth}px (without trailing spacing)`);
-        console.log(`  - Copy spacing: ${this.baseWidth + this.elementSpacing}px (base + 40px gap)`);
-        console.log(`  - Total width: ${this.totalWidth}px`);
         
         // Debug: show positions of first few elements of each copy
         if (copiesNeeded > 1) {
             const elementsPerCopy = originalElements.length;
-            console.log(`  - First element copy 1: x=${this.elements[0].x}`);
-            console.log(`  - First element copy 2: x=${this.elements[elementsPerCopy].x}`);
-            console.log(`  - Last element copy 1: x=${this.elements[elementsPerCopy-1].x}, width=${this.elements[elementsPerCopy-1].width}`);
-            console.log(`  - Gap between copies: ${this.elements[elementsPerCopy].x - (this.elements[elementsPerCopy-1].x + this.elements[elementsPerCopy-1].width)}px`);
         }
         
         // Load letter images
@@ -266,7 +247,6 @@ class Strip {
                 elements.forEach(element => {
                     element.image = img;
                 });
-                console.log(`Loaded letter image: ${imagePath}`);
             };
             img.onerror = () => {
                 console.warn(`Failed to load letter image: ${imagePath}`);

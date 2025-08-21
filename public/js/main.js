@@ -15,8 +15,6 @@ class App {
     
     async init() {
         try {
-            console.log('Initializing Strike A Pawse application...');
-            
             // Initialize configuration
             this.config = new window.Config();
             
@@ -47,7 +45,8 @@ class App {
             // Start animation loop
             this.start();
             
-            console.log('Application initialized successfully');
+            // Reset strips to ensure clean start
+            this.resetStrips();
             
         } catch (error) {
             console.error('Failed to initialize application:', error);
@@ -71,7 +70,6 @@ class App {
                 // Load both weights we're using: 700 (bold) and 800 (extra bold)
                 await document.fonts.load('700 100px "Wix Madefor Display"');
                 await document.fonts.load('800 100px "Wix Madefor Display"');
-                console.log('Wix Madefor Display font loaded successfully');
             } catch (error) {
                 console.error('Font loading failed:', error);
             }
@@ -86,7 +84,6 @@ class App {
         if (this.isRunning) return;
         
         this.isRunning = true;
-        console.log('Starting animation loop...');
         
         // Ensure we have a clean start
         if (this.animationId) {
@@ -106,8 +103,6 @@ class App {
             cancelAnimationFrame(this.animationId);
             this.animationId = null;
         }
-        
-        console.log('Animation loop stopped');
     }
     
     animate = (currentTime) => {
@@ -206,7 +201,6 @@ class App {
     
     logStatus() {
         const info = this.getPerformanceInfo();
-        console.log('App Status:', info);
         return info;
     }
 }
@@ -228,34 +222,24 @@ document.addEventListener('DOMContentLoaded', () => {
                     
                 case 'p':
                     e.preventDefault();
-                    const isRunning = window.app.toggleAnimation();
-                    console.log(`Animation ${isRunning ? 'started' : 'stopped'}`);
+                    window.app.toggleAnimation();
                     break;
                     
                 case 'r':
                     e.preventDefault();
                     window.app.resetStrips();
-                    console.log('Strips reset');
                     break;
             }
         }
     });
     
-    console.log('Strike A Pawse - Dog Day 2025 loaded');
-    console.log('Debug commands:');
-    console.log('  Ctrl/Cmd+Shift+S: Log status');
-    console.log('  Ctrl/Cmd+Shift+P: Toggle animation');
-    console.log('  Ctrl/Cmd+Shift+R: Reset strips');
-    console.log('  Ctrl/Cmd+H: Toggle dev panel');
-    console.log('  Ctrl/Cmd+Z: Force zoom');
 });
 
 // Visibility change handler removed - animation stays running always
 
 // Handle window resize (though this shouldn't happen with fixed dimensions)
 window.addEventListener('resize', () => {
-    // In a real deployment, this would be for debugging only
-    console.log('Window resized - application designed for 4640x1760');
+    // Application designed for 4640x1760
 });
 
 // Export for debugging

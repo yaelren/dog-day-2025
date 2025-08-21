@@ -32,7 +32,6 @@ class ImageManager {
             const response = await fetch('/api/placeholders');
             const data = await response.json();
             
-            console.log(`Loading ${data.images.length} placeholder images`);
             
             // Load up to 22 placeholders
             const placeholdersToLoad = data.images.slice(0, 22);
@@ -51,8 +50,6 @@ class ImageManager {
                     this.imageSlots[i] = processed;
                 }
             }
-            
-            console.log('Placeholder images loaded into all 22 slots');
             this.updateImageCount();
             
         } catch (error) {
@@ -77,7 +74,6 @@ class ImageManager {
             );
             
             if (newImages.length > 0) {
-                console.log(`Found ${newImages.length} new real images`);
                 
                 for (const imageInfo of newImages) {
                     await this.handleNewRealImage(imageInfo);
@@ -90,7 +86,6 @@ class ImageManager {
     }
     
     async handleNewRealImage(imageInfo) {
-        console.log(`Processing new real image: ${imageInfo.filename}`);
         
         // Load the new image
         const processedImage = await this.loadImage(imageInfo, false); // false = not placeholder
@@ -102,7 +97,6 @@ class ImageManager {
         const slotToReplace = this.nextSlotToReplace;
         const oldImage = this.imageSlots[slotToReplace];
         
-        console.log(`Replacing slot ${slotToReplace} (was: ${oldImage?.filename}) with ${imageInfo.filename}`);
         
         // Update the slot with new image
         this.imageSlots[slotToReplace] = processedImage;
@@ -114,7 +108,6 @@ class ImageManager {
         // remove the oldest real image from queue (FIFO)
         if (this.realImagesQueue.length > 22) {
             const removedImage = this.realImagesQueue.shift();
-            console.log(`Removed oldest image from queue: ${removedImage.filename}`);
         }
         
         // Notify strip renderer to update
