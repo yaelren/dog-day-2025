@@ -58,13 +58,31 @@ async function loadInitialImages() {
     const files = await fs.readdir(IMAGE_DIRECTORY);
     const imageFiles = files.filter(file => 
       /\.(jpg|jpeg|png)$/i.test(file)
-    ).slice(0, MAX_IMAGES);
-
-    for (const file of imageFiles) {
-      imageQueue.add(path.join(IMAGE_DIRECTORY, file));
+    );
+    
+    // Sort by modification time to get the most recent images
+    const fileStats = await Promise.all(
+      imageFiles.map(async (file) => {
+        const filePath = path.join(IMAGE_DIRECTORY, file);
+        const stats = await fs.stat(filePath);
+        return { file, filePath, mtime: stats.mtime };
+      })
+    );
+    
+    // Sort by modification time (newest first) and take the most recent MAX_IMAGES
+    const sortedFiles = fileStats
+      .sort((a, b) => b.mtime - a.mtime)
+      .slice(0, MAX_IMAGES);
+    
+    // Add to queue (oldest to newest so newest are at the end)
+    for (const { filePath, file } of sortedFiles.reverse()) {
+      imageQueue.add(filePath);
     }
     
-    console.log(`Loaded ${imageFiles.length} initial images`);
+    console.log(`Loaded ${sortedFiles.length} most recent images from ${imageFiles.length} total`);
+    if (imageFiles.length > MAX_IMAGES) {
+      console.log(`Note: Folder contains ${imageFiles.length} images but only loading the ${MAX_IMAGES} most recent`);
+    }
     return imageQueue.getAll();
   } catch (error) {
     console.error('Error loading initial images:', error);
@@ -77,35 +95,81 @@ let watcher;
 function setupFileWatcher() {
   if (watcher) watcher.close();
   
+  // Track known files to detect new ones even if events don't fire properly
+  const knownFiles = new Set();
+  const currentImages = imageQueue.getAll();
+  currentImages.forEach(img => knownFiles.add(path.basename(img.path)));
+
   watcher = chokidar.watch(IMAGE_DIRECTORY, {
-    ignored: /(^|[\/\\])\../, // ignore dotfiles
+    ignored: [
+      /(^|[\/\\])\../, // ignore dotfiles
+      /\.tmp$/, // ignore temp files
+      /~\$/, // ignore temporary Office files
+      /\.crdownload$/, // ignore Chrome downloads
+      /desktop\.ini/ // ignore Windows system files
+    ],
     persistent: true,
-    usePolling: true, // Use polling for network drives
-    interval: 5000, // Check every 5 seconds
+    usePolling: true, // Essential for Google Drive
+    interval: 3000, // Check every 3 seconds for faster detection
+    awaitWriteFinish: {
+      stabilityThreshold: 2000, // Wait for file to be stable for 2 seconds
+      pollInterval: 500 // Check every 500ms during stabilization
+    },
     ignoreInitial: true
   });
 
-  console.log(`File watcher started - checking folder every 5 seconds`);
+  console.log(`File watcher started - checking Google Drive folder every 3 seconds`);
   
-  // Log periodic status every 30 seconds
-  setInterval(() => {
-    console.log(`[${new Date().toLocaleTimeString()}] Watching folder - ${imageQueue.getAll().length}/${MAX_IMAGES} images in queue`);
-  }, 30000);
+  // Periodic rescan to catch any missed files (important for Google Drive)
+  setInterval(async () => {
+    try {
+      const files = await fs.readdir(IMAGE_DIRECTORY);
+      const imageFiles = files.filter(file => 
+        /\.(jpg|jpeg|png)$/i.test(file) && !knownFiles.has(file)
+      );
+      
+      for (const file of imageFiles) {
+        const filePath = path.join(IMAGE_DIRECTORY, file);
+        knownFiles.add(file);
+        imageQueue.add(filePath);
+        console.log(`[${new Date().toLocaleTimeString()}] Found new image during rescan: ${file}`);
+      }
+      
+      console.log(`[${new Date().toLocaleTimeString()}] Periodic scan - ${imageQueue.getAll().length}/${MAX_IMAGES} images in queue`);
+    } catch (error) {
+      console.error('Error during periodic scan:', error);
+    }
+  }, 15000); // Rescan every 15 seconds
 
   watcher
     .on('add', (filePath) => {
       if (/\.(jpg|jpeg|png)$/i.test(filePath)) {
-        const imageInfo = imageQueue.add(filePath);
-        console.log(`[${new Date().toLocaleTimeString()}] New image added: ${path.basename(filePath)}`);
+        const filename = path.basename(filePath);
+        if (!knownFiles.has(filename)) {
+          knownFiles.add(filename);
+          const imageInfo = imageQueue.add(filePath);
+          console.log(`[${new Date().toLocaleTimeString()}] New image detected: ${filename}`);
+        }
+      }
+    })
+    .on('change', (filePath) => {
+      // Google Drive might trigger 'change' instead of 'add' for new files
+      if (/\.(jpg|jpeg|png)$/i.test(filePath)) {
+        const filename = path.basename(filePath);
+        if (!knownFiles.has(filename)) {
+          knownFiles.add(filename);
+          const imageInfo = imageQueue.add(filePath);
+          console.log(`[${new Date().toLocaleTimeString()}] New image detected (via change event): ${filename}`);
+        }
       }
     })
     .on('ready', () => {
-      console.log(`[${new Date().toLocaleTimeString()}] Initial scan complete. Watching for changes...`);
+      console.log(`[${new Date().toLocaleTimeString()}] Initial scan complete. Monitoring Google Drive folder...`);
     })
     .on('raw', (event, path, details) => {
       // Log when polling checks occur (only in verbose mode)
       if (process.env.VERBOSE === 'true' && event === 'scan') {
-        console.log(`[${new Date().toLocaleTimeString()}] Checking folder for changes...`);
+        console.log(`[${new Date().toLocaleTimeString()}] Polling Google Drive folder...`);
       }
     })
     .on('error', error => console.error(`Watcher error: ${error}`));
