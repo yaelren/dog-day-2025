@@ -20,7 +20,7 @@ app.use('/placeholders', express.static(path.join(__dirname, '../placeholders'))
 
 // Image queue management
 class ImageQueue {
-  constructor(maxSize = 10) {
+  constructor(maxSize = 22) {
     this.queue = [];
     this.maxSize = maxSize;
   }

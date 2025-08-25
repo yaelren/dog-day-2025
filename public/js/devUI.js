@@ -8,7 +8,7 @@ class DevUI {
         
         this.panel = document.getElementById('devPanel');
         this.showButton = document.getElementById('showPanel');
-        this.isVisible = true;
+        this.isVisible = false;
         
         this.setupEventListeners();
         this.setupKeyboardShortcuts();
@@ -124,6 +124,9 @@ class DevUI {
         document.getElementById('zoomDurationValue').textContent = this.config.zoom.duration / 1000;
         document.getElementById('zoomScale').value = this.config.zoom.scale;
         document.getElementById('zoomScaleValue').textContent = this.config.zoom.scale.toFixed(1);
+        
+        // Start with panel hidden
+        this.hidePanel();
     }
     
     togglePanel() {
