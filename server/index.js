@@ -81,14 +81,31 @@ function setupFileWatcher() {
     ignored: /(^|[\/\\])\../, // ignore dotfiles
     persistent: true,
     usePolling: true, // Use polling for network drives
+    interval: 5000, // Check every 5 seconds
     ignoreInitial: true
   });
+
+  console.log(`File watcher started - checking folder every 5 seconds`);
+  
+  // Log periodic status every 30 seconds
+  setInterval(() => {
+    console.log(`[${new Date().toLocaleTimeString()}] Watching folder - ${imageQueue.getAll().length}/${MAX_IMAGES} images in queue`);
+  }, 30000);
 
   watcher
     .on('add', (filePath) => {
       if (/\.(jpg|jpeg|png)$/i.test(filePath)) {
         const imageInfo = imageQueue.add(filePath);
-        console.log(`New image added: ${path.basename(filePath)}`);
+        console.log(`[${new Date().toLocaleTimeString()}] New image added: ${path.basename(filePath)}`);
+      }
+    })
+    .on('ready', () => {
+      console.log(`[${new Date().toLocaleTimeString()}] Initial scan complete. Watching for changes...`);
+    })
+    .on('raw', (event, path, details) => {
+      // Log when polling checks occur (only in verbose mode)
+      if (process.env.VERBOSE === 'true' && event === 'scan') {
+        console.log(`[${new Date().toLocaleTimeString()}] Checking folder for changes...`);
       }
     })
     .on('error', error => console.error(`Watcher error: ${error}`));

@@ -5,7 +5,6 @@ class App {
         this.imageManager = null;
         this.stripRenderer = null;
         this.zoomManager = null;
-        this.devUI = null;
         
         this.animationId = null;
         this.isRunning = false;
@@ -32,12 +31,6 @@ class App {
             
             // Initialize zoom manager
             this.zoomManager = new window.ZoomManager(this.config, this.stripRenderer);
-            
-            // Initialize development UI
-            this.devUI = new window.DevUI(this.config, this.stripRenderer, this.zoomManager, this.imageManager);
-            
-            // Try to load saved configuration
-            this.devUI.loadConfiguration();
             
             // Wait for font to load before starting
             await this.waitForFont();
@@ -183,9 +176,7 @@ class App {
     }
     
     saveConfiguration() {
-        if (this.devUI) {
-            this.devUI.saveConfiguration();
-        }
+        // Configuration saving removed with dev UI
     }
     
     // Debug methods
